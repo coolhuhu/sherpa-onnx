@@ -3,6 +3,7 @@
 #include <cassert>
 #include <iostream>
 
+#include "sherpa-onnx/csrc/macros.h"
 #include "sherpa-onnx/csrc/voice-activity-detector.h"
 
 namespace sherpa_onnx {
@@ -12,25 +13,33 @@ class OnlineVoiceActivityDetector::Impl {
   Impl(const VadModelConfig &config)
       : vad_detector_(config),
         num_processed_samples_(0),
-        speech_segment_start_(false) {}
+        speech_segment_start_(false) {
+    if (!config.silero_vad.model.empty()) {
+      window_size_ = config.silero_vad.window_size;
+    } else if (!config.ten_vad.model.empty()) {
+      window_size_ = config.ten_vad.window_size;
+    } else {
+      SHERPA_ONNX_LOGE("Currently, we only support Silero VAD or Ten VAD.");
+      SHERPA_ONNX_EXIT(-1);
+    }
+  }
 
   void AcceptWaveform(const float *samples, int32_t n) {
     if (n <= 0) {
       return;
     }
 
-    int32_t window_size = vad_detector_.WindowSize();
-
     int32_t offset = 0;
-    while (offset + window_size < n) {
-      vad_detector_.AcceptWaveform(samples + offset, window_size);
+    while (offset + window_size_ < n) {
+      vad_detector_.AcceptWaveform(samples + offset, window_size_);
 
-      offset += window_size;
+      offset += window_size_;
 
       // Detect the start of the speech segment
       if (!speech_segment_start_ && vad_detector_.IsSpeechDetected()) {
         speech_segment_start_ = true;
-        num_processed_samples_ = vad_detector_.CurrentSpeechSegmentStart();
+        auto s = vad_detector_.CurrentSpeechSegment();
+        num_processed_samples_ = s.start;
       }
 
       // detected the endpoint
@@ -67,7 +76,8 @@ class OnlineVoiceActivityDetector::Impl {
     if (vad_detector_.IsSpeechDetected()) {
       if (!speech_segment_start_) {
         speech_segment_start_ = true;
-        num_processed_samples_ = vad_detector_.CurrentSpeechSegmentStart();
+        auto s = vad_detector_.CurrentSpeechSegment();
+        num_processed_samples_ = s.start;
       }
 
       auto s = vad_detector_.CurrentSpeechSegment();
@@ -99,6 +109,7 @@ class OnlineVoiceActivityDetector::Impl {
   }
 
  private:
+  int32_t window_size_;
   VoiceActivityDetector vad_detector_;
   int32_t num_processed_samples_;
   bool speech_segment_start_;

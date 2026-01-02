@@ -299,6 +299,16 @@ if(SHERPA_ONNX_ENABLE_CHECK)
   list(APPEND sources log.cc)
 endif()
 
+if(SHERPA_ONNX_ENABLE_ENGINE)
+  list(APPEND sources
+    ./engine/offline-asr-engine/cpu-worker.cc
+    ./engine/offline-asr-engine/offline-asr-engine.cc
+    ./engine/offline-asr-engine/offline-session-impl.cc
+    ./engine/offline-asr-engine/online-voice-activity-detector.cc
+    ./engine/offline-asr-engine/scheduler.cc
+  )
+endif()
+
 # Always static build
 add_library(sherpa-onnx-core STATIC ${sources})
 

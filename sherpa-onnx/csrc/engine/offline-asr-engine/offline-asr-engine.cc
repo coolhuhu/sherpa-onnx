@@ -8,7 +8,9 @@ namespace sherpa_onnx {
 OfflineASREngine::OfflineASREngine(const OfflineASREngineConfig &config)
     : impl_(std::make_unique<OfflineASREngineImpl>(config)) {}
 
-void OfflineASREngine::Start(ErrorCode &code) {}
+void OfflineASREngine::Init(ErrorCode &code) { impl_->Init(code); }
+
+void OfflineASREngine::Start(ErrorCode &code) { impl_->Start(code); }
 
 void OfflineASREngine::Shutdown() {}
 

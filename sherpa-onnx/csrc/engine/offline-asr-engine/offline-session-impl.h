@@ -1,28 +1,31 @@
 #ifndef OFFLINE_ASR_ENGINE_SESSION_IMPL_H_
 #define OFFLINE_ASR_ENGINE_SESSION_IMPL_H_
 
-#include "engine/offline-asr-engine/offline-session.h"
+#include <memory>
+
+#include "sherpa-onnx/csrc/engine/offline-asr-engine/offline-asr-engine-config.h"
+#include "sherpa-onnx/csrc/engine/offline-asr-engine/offline-session.h"
 
 namespace sherpa_onnx {
 
-class OfflineStream;
-class OfflineRecognizer;
+class Worker;
+class Scheduler;
 
 class OfflineSessionImpl : public OfflineSession {
  public:
-  OfflineSessionImpl(OfflineRecognizer *recognizer, OfflineStream *stream)
-      : recognizer_(recognizer), stream_(stream) {}
+  OfflineSessionImpl(int32_t session_id, Scheduler *scheduler, Worker *worker,
+                     const OfflineASREngineConfig &config);
 
-  ~OfflineSessionImpl() = default;
+  ~OfflineSessionImpl();
 
-  void AcceptWaveform(float sample_rate, const float *wave,
+  void AcceptWaveform(int32_t sample_rate, const float *wave,
                       int32_t num_samples) override;
 
   void Close() override;
 
  private:
-  OfflineRecognizer *recognizer_;
-  OfflineStream *stream_;
+  class Impl;
+  std::unique_ptr<Impl> impl_;
 };
 
 }  // namespace sherpa_onnx

@@ -10,14 +10,20 @@ namespace sherpa_onnx {
 
 class OfflineASREngineImpl {
  public:
-  OfflineASREngineImpl(const OfflineASREngineConfig &config) {}
+  OfflineASREngineImpl(const OfflineASREngineConfig &config)
+      : scheduler_(config) {}
 
   ~OfflineASREngineImpl() = default;
 
-  OfflineSession *CreateSession(ErrorCode &code) {}
+  void Init(ErrorCode &code) { scheduler_.Init(code); }
+
+  void Start(ErrorCode &code) { scheduler_.Start(code); }
+
+  OfflineSession *CreateSession(ErrorCode &code) {
+    return scheduler_.CreateSession(code);
+  }
 
  private:
-  OfflineASREngineConfig config_;
   Scheduler scheduler_;
 };
 

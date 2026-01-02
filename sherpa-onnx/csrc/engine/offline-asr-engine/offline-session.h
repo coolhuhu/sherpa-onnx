@@ -7,12 +7,12 @@ class OfflineSession {
  public:
   virtual ~OfflineSession() = default;
 
-  virtual void AcceptWaveform(float sample_rate, const float *wave,
+  virtual void AcceptWaveform(int32_t sample_rate, const float *wave,
                               int32_t num_samples) = 0;
 
   virtual void Close() = 0;
 
- private:
+ protected:
   OfflineSession() = default;
 };
 

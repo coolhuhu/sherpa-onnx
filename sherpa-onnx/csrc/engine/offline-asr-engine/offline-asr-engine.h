@@ -15,6 +15,8 @@ class OfflineASREngine {
  public:
   OfflineASREngine(const OfflineASREngineConfig &config);
 
+  void Init(ErrorCode &code);
+
   void Start(ErrorCode &code);
 
   void Shutdown();
