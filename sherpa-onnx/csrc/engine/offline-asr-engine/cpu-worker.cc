@@ -59,17 +59,21 @@ class CPUWorker::Impl {
     bool use_vad = false;
     while (!stop_) {
       if (config_.use_vad) {
+        VadTask vad_task;
+        if (vad_task_queue_->try_dequeue(vad_task)) {
+        }
       }
 
+      int64_t wait_time = 1000000;  // microseconds
       DecodeTask task;
-      decode_task_queue_->wait_dequeue(task);
+      if (decode_task_queue_->wait_dequeue_timed(task, wait_time)) {
+        std::unique_ptr<OfflineStream> stream = recognizer_->CreateStream();
+        stream->AcceptWaveform(task.sample_rate, task.samples.data(),
+                               task.samples.size());
 
-      std::unique_ptr<OfflineStream> stream = recognizer_->CreateStream();
-      stream->AcceptWaveform(task.sample_rate, task.samples.data(),
-                             task.samples.size());
-
-      recognizer_->DecodeStream(stream.get());
-      auto result = stream->GetResult();
+        recognizer_->DecodeStream(stream.get());
+        auto result = stream->GetResult();
+      }
 
       if (config_.enable_task_stealing) {
         if (num_sessions_ == 0) {

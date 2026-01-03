@@ -17,7 +17,9 @@ class OfflineSessionImpl::Impl {
         scheduler_(scheduler),
         worker_(worker),
         owner_(owner),
-        config_(config) {}
+        config_(config),
+        vad_task_id_(0),
+        decode_task_id_(0) {}
 
   void AcceptWaveform(int32_t sample_rate, const float *wave,
                       int32_t num_samples) {
@@ -41,6 +43,9 @@ class OfflineSessionImpl::Impl {
   Worker *worker_;
   OfflineSessionImpl *owner_;
   const OfflineASREngineConfig &config_;
+
+  int32_t vad_task_id_ = 0;
+  int32_t decode_task_id_ = 0;
 };
 
 OfflineSessionImpl::OfflineSessionImpl(int32_t session_id, Scheduler *scheduler,

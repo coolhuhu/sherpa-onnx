@@ -3,7 +3,7 @@
 
 #include <vector>
 
-#include "sherpa-onnx/csrc/engine/offline-asr-engine/offline-session.h"
+#include "sherpa-onnx/csrc/engine/offline-asr-engine/offline-session-impl.h"
 
 namespace sherpa_onnx {
 
@@ -11,12 +11,12 @@ struct VadTask {
   int32_t sample_rate;
   int32_t start;
   std::vector<float> samples;
-  OfflineSession *session;
+  OfflineSessionImpl *session;
 
-  // VadTask() = default;
+  VadTask() = default;
 
   VadTask(int32_t sample_rate, int32_t start, const float *samples, int32_t n,
-          OfflineSession *session)
+          OfflineSessionImpl *session)
       : sample_rate(sample_rate),
         start(start),
         samples(samples, samples + n),
@@ -42,12 +42,12 @@ struct DecodeTask {
   int32_t start;
   std::vector<float> samples;
 
-  OfflineSession *session;
+  OfflineSessionImpl *session;
 
   DecodeTask() = default;
 
   DecodeTask(int32_t sample_rate, int32_t start, const float *samples,
-             int32_t n, OfflineSession *session)
+             int32_t n, OfflineSessionImpl *session)
       : sample_rate(sample_rate),
         start(start),
         samples(samples, samples + n),
