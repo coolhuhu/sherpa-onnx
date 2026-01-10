@@ -14,7 +14,7 @@ void OfflineASREngine::Start(ErrorCode &code) { impl_->Start(code); }
 
 void OfflineASREngine::Shutdown() {}
 
-OfflineSession *OfflineASREngine::CreateSession(ErrorCode &code) {
+const OfflineSession *OfflineASREngine::CreateSession(ErrorCode &code) {
   return impl_->CreateSession(code);
 }
 

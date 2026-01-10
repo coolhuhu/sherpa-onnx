@@ -1,5 +1,6 @@
 #include "sherpa-onnx/csrc/engine/offline-asr-engine/scheduler.h"
 
+#include <map>
 #include <mutex>
 #include <unordered_set>
 #include <vector>
@@ -19,123 +20,109 @@ namespace sherpa_onnx {
 class Scheduler::Impl {
  public:
   Impl(Scheduler *owner, const OfflineASREngineConfig &config)
-      : owner_(owner), config_(config), initialized_(false) {}
+      : owner_(owner),
+        config_(config),
+        initialized_(false),
+        next_session_id_(0) {}
 
   void Init(ErrorCode &code) {
     if (config_.enable_gpu) {
       SHERPA_ONNX_LOGE("GPU is not supported yet");
-      code = kInvalidArgument;
+      code.error_code = ErrorCode::kInvalidArgument;
+      code.error_msg = "GPU is not supported yet";
       initialized_ = false;
       return;
     } else {
       InitCPU();
+      initialized_ = true;
     }
   }
 
   void Start(ErrorCode &code) {
     if (!initialized_) {
-      code = kEngineUninitialized;
+      code.error_code = ErrorCode::kEngineUninitialized;
+      code.error_msg = "Engine is not initialized or had stopped";
       return;
     }
 
-    code = kSuccess;
+    code.error_code = ErrorCode::kSuccess;
   }
 
   OfflineSession *CreateSession(ErrorCode &code) {
     if (!initialized_) {
-      code = kEngineUninitialized;
+      code.error_code = ErrorCode::kEngineUninitialized;
       return nullptr;
     }
 
     std::lock_guard<std::mutex> locker(session_mutex_);
 
-    if (idle_sessions_id_.empty()) {
-      code = kResourceExhausted;
+    if (idle_session_ids_.empty()) {
+      code.error_code = ErrorCode::kResourceExhausted;
       return nullptr;
     }
 
-    int32_t worker_id =
-        std::min_element(num_working_sessions_per_worker_.begin(),
-                         num_working_sessions_per_worker_.end()) -
-        num_working_sessions_per_worker_.begin();
-
-    SessionID session_id = *idle_sessions_id_.begin();
-    idle_sessions_id_.erase(session_id);
+    WorkerID worker_id =
+        std::min_element(
+            num_working_sessions_per_worker_.begin(),
+            num_working_sessions_per_worker_.end(),
+            [](const auto &l, const auto &r) { return l.second < r.second; })
+            ->first;
+    SessionID session_id = *idle_session_ids_.begin();
+    idle_session_ids_.erase(session_id);
     sessions_[session_id] = std::make_unique<OfflineSessionImpl>(
-        session_id, owner_, workers_[worker_id].get(), config_);
-
+        config_, session_id, owner_, workers_[worker_id].get(),
+        vad_detectors_[session_id].get());
     num_working_sessions_per_worker_[worker_id]++;
 
-    code = kSuccess;
+    code.error_code = ErrorCode::kSuccess;
     return sessions_[session_id].get();
   }
 
   void CloseSession(int32_t session_id) {
     std::lock_guard<std::mutex> locker(session_mutex_);
-    WorkerID worker_id = std::get<0>(session_manager_[session_id])->WorkerId();
+    WorkerID worker_id = sessions_[session_id]->WorkerID();
     num_working_sessions_per_worker_[worker_id]--;
-    idle_sessions_id_.insert(session_id);
-    sessions_[session_id].reset(nullptr);
+    idle_session_ids_.insert(session_id);
+    sessions_.erase(session_id);
   }
 
  private:
   void InitCPU() {
     // Init Vad Detector.
+    for (; next_session_id_ <
+           config_.num_worker_threads * config_.max_sessions_per_worker;
+         next_session_id_++) {
+      vad_detectors_[next_session_id_] =
+          std::make_unique<OnlineVoiceActivityDetector>(config_.vad_config);
+      idle_session_ids_.emplace(next_session_id_);
+    }
 
     // Init Recognizer.
     // for cpu decode, all worker share the same recognizer
-    recognizers_.emplace_back(
-        std::make_unique<OfflineRecognizer>(config_.recognizer_config));
+    recognizers_[0] =
+        std::make_unique<OfflineRecognizer>(config_.recognizer_config);
 
     // Init Task Queue.
     // every worker has its own task queue
-    vad_task_queues_.reserve(config_.num_workers);
-    vad_task_queues_ptr_.resize(config_.num_workers, nullptr);
-    // TODO(lianghu): queue size should be configurable
-    for (int i = 0; i < config_.num_workers; ++i) {
-      vad_task_queues_.emplace_back(std::make_unique<TaskQueue<VadTask>>(
-          (std::ceil(30 /
-                     moodycamel::BlockingConcurrentQueue<VadTask>::BLOCK_SIZE) +
-           1) *
-          30 * moodycamel::BlockingConcurrentQueue<VadTask>::BLOCK_SIZE));
-    }
-    for (int i = 0; i < config_.num_workers; ++i) {
-      vad_task_queues_ptr_[i] = vad_task_queues_[i].get();
-    }
-
-    decode_task_queues_.reserve(config_.num_workers);
-    decode_task_queues_ptr_.resize(config_.num_workers, nullptr);
-    for (int i = 0; i < config_.num_workers; ++i) {
-      decode_task_queues_.emplace_back(std::make_unique<TaskQueue<DecodeTask>>(
-          (std::ceil(
-               30 /
-               moodycamel::BlockingConcurrentQueue<DecodeTask>::BLOCK_SIZE) +
-           1) *
-          30 * moodycamel::BlockingConcurrentQueue<DecodeTask>::BLOCK_SIZE));
-    }
-    for (int i = 0; i < config_.num_workers; ++i) {
-      decode_task_queues_ptr_[i] = decode_task_queues_[i].get();
+    for (int32_t worker_id = 0; worker_id < config_.num_worker_threads;
+         ++worker_id) {
+      task_queues_[worker_id] = std::make_unique<TaskQueue>();
     }
 
     // Init Workers.
-    workers_.reserve(config_.num_workers);
-    for (int32_t i = 0; i < config_.num_workers; ++i) {
-      workers_.emplace_back(std::make_unique<CPUWorker>(
-          i, config_, recognizers_[0].get(), vad_task_queues_ptr_,
-          decode_task_queues_ptr_));
+    for (int32_t worker_id = 0; worker_id < config_.num_worker_threads;
+         ++worker_id) {
+      workers_[worker_id] = std::make_unique<CPUWorker>(
+          worker_id, config_, recognizers_[0].get(), task_queues_);
+      num_working_sessions_per_worker_[worker_id] = 0;
     }
-    num_working_sessions_per_worker_.resize(config_.num_workers, 0);
-
-    // Init Sessions.
   }
 
  private:
   template <typename T>
   using Ptr = std::unique_ptr<T>;
 
-  template <typename T>
-  using TaskQueue = moodycamel::BlockingConcurrentQueue<T>;
-
+  using TaskQueue = moodycamel::BlockingConcurrentQueue<WaveTask>;
   using SessionID = int32_t;
   using WorkerID = int32_t;
 
@@ -143,26 +130,18 @@ class Scheduler::Impl {
   OfflineASREngineConfig config_;
   bool initialized_ /* = false */;
 
-  std::vector<Ptr<OnlineVoiceActivityDetector>> vad_detectors_;
+  std::map<SessionID, Ptr<OnlineVoiceActivityDetector>> vad_detectors_;
 
-  std::vector<Ptr<OfflineRecognizer>> recognizers_;
-  std::vector<Ptr<Worker>> workers_;
-  std::vector<int32_t> num_working_sessions_per_worker_;
+  std::unordered_map<WorkerID, Ptr<OfflineRecognizer>> recognizers_;
+  std::unordered_map<WorkerID, Ptr<Worker>> workers_;
+  std::unordered_map<WorkerID, int32_t> num_working_sessions_per_worker_;
+  std::unordered_map<WorkerID, Ptr<TaskQueue>> task_queues_;
 
-  std::vector<Ptr<TaskQueue<VadTask>>> vad_task_queues_;
-  std::vector<TaskQueue<VadTask> *> vad_task_queues_ptr_;
-  std::vector<Ptr<TaskQueue<DecodeTask>>> decode_task_queues_;
-  std::vector<TaskQueue<DecodeTask> *> decode_task_queues_ptr_;
+  std::map<SessionID, Ptr<OfflineSessionImpl>> sessions_;
+  std::unordered_set<SessionID> idle_session_ids_;
+  SessionID next_session_id_;
 
-  std::vector<Ptr<OfflineSession>> sessions_;
-  // [0, sessions_.size() - 1]
-  std::unordered_set<SessionID> idle_sessions_id_;
-
-  std::unordered_map<SessionID,
-                     std::tuple<Worker *, OnlineVoiceActivityDetector *>>
-      session_manager_;
-
-  std::mutex session_mutex_;
+  mutable std::mutex session_mutex_;
 };
 
 Scheduler::Scheduler(const OfflineASREngineConfig &config)
@@ -174,7 +153,7 @@ void Scheduler::Init(ErrorCode &code) { impl_->Init(code); }
 
 void Scheduler::Start(ErrorCode &code) { impl_->Start(code); }
 
-OfflineSession *Scheduler::CreateSession(ErrorCode &code) {
+const OfflineSession *Scheduler::CreateSession(ErrorCode &code) {
   return impl_->CreateSession(code);
 }
 

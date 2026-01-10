@@ -17,6 +17,14 @@
 namespace sherpa_onnx {
 
 struct OfflineRecognitionResult {
+  int32_t segment_id = 0;
+
+  // segment start time, in seconds
+  float start_time = 0.0f;
+
+  // segment end time, in seconds
+  float end_time = 0.0f;
+
   // Recognition results.
   // For English, it consists of space separated words.
   // For Chinese, it consists of Chinese words without spaces.

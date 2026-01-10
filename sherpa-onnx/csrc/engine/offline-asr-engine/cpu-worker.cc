@@ -12,15 +12,15 @@ class CPUWorker::Impl {
  public:
   Impl(CPUWorker *owner, const OfflineASREngineConfig &config,
        OfflineRecognizer *recognizer,
-       const std::vector<moodycamel::BlockingConcurrentQueue<VadTask> *>
-           &vad_task_queues,
-       const std::vector<moodycamel::BlockingConcurrentQueue<DecodeTask> *>
-           &decode_task_queues)
+       std::unordered_map<
+           int32_t,
+           std::unique_ptr<moodycamel::BlockingConcurrentQueue<WaveTask>>>
+           &workers_task_queues)
       : owner_(owner),
         config_(config),
         recognizer_(recognizer),
-        other_vad_task_queues_(vad_task_queues),
-        other_decode_task_queues_(decode_task_queues) {}
+        workers_task_queues_(workers_task_queues),
+        stop_(true) {}
 
   ~Impl() { Stop(); }
 
@@ -28,18 +28,10 @@ class CPUWorker::Impl {
 
   void RemoveSession() { num_sessions_--; }
 
-  void CommitVadTask(VadTask &&task) {
-    vad_task_queue_->enqueue(std::move(task));
-  }
-
-  void CommitDecodeTask(DecodeTask &&task) {
-    decode_task_queue_->enqueue(std::move(task));
-  }
+  void CommitWaveTask(WaveTask &&task) {}
 
   void Start() {
-    vad_task_queue_ = other_vad_task_queues_[owner_->worker_id_];
-    decode_task_queue_ = other_decode_task_queues_[owner_->worker_id_];
-
+    task_queue_ = workers_task_queues_[owner_->WorkerID()].get();
     stop_ = false;
     thread_ = std::thread(&CPUWorker::Impl::Pipeline, this);
   }
@@ -56,46 +48,39 @@ class CPUWorker::Impl {
 
  private:
   void Pipeline() {
-    bool use_vad = false;
     while (!stop_) {
-      if (config_.use_vad) {
-        VadTask vad_task;
-        if (vad_task_queue_->try_dequeue(vad_task)) {
-        }
-      }
-
-      int64_t wait_time = 1000000;  // microseconds
-      DecodeTask task;
-      if (decode_task_queue_->wait_dequeue_timed(task, wait_time)) {
-        std::unique_ptr<OfflineStream> stream = recognizer_->CreateStream();
-        stream->AcceptWaveform(task.sample_rate, task.samples.data(),
-                               task.samples.size());
-
-        recognizer_->DecodeStream(stream.get());
-        auto result = stream->GetResult();
-      }
-
-      if (config_.enable_task_stealing) {
-        if (num_sessions_ == 0) {
-          // TODO(lianghu): task stealing
-        }
+      if (config_.enable_vad) {
+        PipelineWithVAD();
+      } else {
+        PipelineWithoutVAD();
       }
     }
 
     // TODO(lianghu): how to corrently empty queue?
   }
 
+  void PipelineWithoutVAD() {
+    int32_t wait_time = 10000;  // in microseconds
+
+    std::vector<WaveTask> tasks(config_.max_sessions_per_worker);
+    int32_t num_task = task_queue_->wait_dequeue_bulk_timed(
+        tasks.begin(), config_.max_sessions_per_worker, wait_time);
+    if (num_task <= 0) {
+      return;
+    }
+  }
+
+  void PipelineWithVAD() {}
+
  private:
   CPUWorker *owner_;
   const OfflineASREngineConfig &config_;
   OfflineRecognizer *recognizer_;
+  std::unordered_map<
+      int32_t, std::unique_ptr<moodycamel::BlockingConcurrentQueue<WaveTask>>>
+      &workers_task_queues_;
+  moodycamel::BlockingConcurrentQueue<WaveTask> *task_queue_;
 
-  std::vector<moodycamel::BlockingConcurrentQueue<VadTask> *>
-      other_vad_task_queues_;
-  std::vector<moodycamel::BlockingConcurrentQueue<DecodeTask> *>
-      other_decode_task_queues_;
-  moodycamel::BlockingConcurrentQueue<VadTask> *vad_task_queue_;
-  moodycamel::BlockingConcurrentQueue<DecodeTask> *decode_task_queue_;
   std::atomic<int32_t> num_sessions_;
 
   std::atomic<bool> stop_ /* = false */;
@@ -105,13 +90,12 @@ class CPUWorker::Impl {
 CPUWorker::CPUWorker(
     int32_t worker_id, const OfflineASREngineConfig &config,
     OfflineRecognizer *recognizer,
-    const std::vector<moodycamel::BlockingConcurrentQueue<VadTask> *>
-        &vad_task_queues,
-    const std::vector<moodycamel::BlockingConcurrentQueue<DecodeTask> *>
-        &decode_task_queues)
+    std::unordered_map<
+        int32_t, std::unique_ptr<moodycamel::BlockingConcurrentQueue<WaveTask>>>
+        &workers_task_queues)
     : Worker(worker_id),
-      impl_(std::make_unique<Impl>(this, config, recognizer, vad_task_queues,
-                                   decode_task_queues)) {}
+      impl_(std::make_unique<Impl>(this, config, recognizer,
+                                   workers_task_queues)) {}
 
 CPUWorker::~CPUWorker() = default;
 
@@ -119,12 +103,8 @@ void CPUWorker::AddSession() { impl_->AddSession(); }
 
 void CPUWorker::RemoveSession() { impl_->RemoveSession(); }
 
-void CPUWorker::CommitVadTask(VadTask &&task) {
-  impl_->CommitVadTask(std::move(task));
-}
-
-void CPUWorker::CommitDecodeTask(DecodeTask &&task) {
-  impl_->CommitDecodeTask(std::move(task));
+void CPUWorker::CommitWaveTask(WaveTask &&task) {
+  impl_->CommitWaveTask(std::move(task));
 }
 
 }  // namespace sherpa_onnx

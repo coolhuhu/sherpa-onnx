@@ -16,10 +16,10 @@ class CPUWorker : public Worker {
  public:
   CPUWorker(int32_t worker_id, const OfflineASREngineConfig &config,
             OfflineRecognizer *recognizer,
-            const std::vector<moodycamel::BlockingConcurrentQueue<VadTask> *>
-                &vad_task_queues,
-            const std::vector<moodycamel::BlockingConcurrentQueue<DecodeTask> *>
-                &decode_task_queues);
+            std::unordered_map<
+                int32_t,
+                std::unique_ptr<moodycamel::BlockingConcurrentQueue<WaveTask>>>
+                &workers_task_queues);
 
   ~CPUWorker() override;
 
@@ -27,9 +27,7 @@ class CPUWorker : public Worker {
 
   void RemoveSession() override;
 
-  void CommitVadTask(VadTask &&task) override;
-
-  void CommitDecodeTask(DecodeTask &&task) override;
+  void CommitWaveTask(WaveTask &&task) override;
 
  private:
   class Impl;

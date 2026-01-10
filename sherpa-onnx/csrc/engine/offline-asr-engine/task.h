@@ -7,59 +7,29 @@
 
 namespace sherpa_onnx {
 
-struct VadTask {
-  int32_t sample_rate;
-  int32_t start;
-  std::vector<float> samples;
-  OfflineSessionImpl *session;
-
-  VadTask() = default;
-
-  VadTask(int32_t sample_rate, int32_t start, const float *samples, int32_t n,
-          OfflineSessionImpl *session)
-      : sample_rate(sample_rate),
-        start(start),
-        samples(samples, samples + n),
-        session(session) {}
-
-  VadTask(VadTask &&rhs)
-      : sample_rate(rhs.sample_rate),
-        start(rhs.start),
-        samples(std::move(rhs.samples)),
-        session(rhs.session) {}
-
-  VadTask &operator=(VadTask &&rhs) {
-    std::swap(sample_rate, rhs.sample_rate);
-    std::swap(start, rhs.start);
-    std::swap(samples, rhs.samples);
-    std::swap(session, rhs.session);
-    return *this;
-  }
-};
-
-struct DecodeTask {
+struct WaveTask {
   int32_t sample_rate;
   int32_t start;
   std::vector<float> samples;
 
   OfflineSessionImpl *session;
 
-  DecodeTask() = default;
+  WaveTask() = default;
 
-  DecodeTask(int32_t sample_rate, int32_t start, const float *samples,
-             int32_t n, OfflineSessionImpl *session)
+  WaveTask(int32_t sample_rate, int32_t start, const float *samples, int32_t n,
+           OfflineSessionImpl *session)
       : sample_rate(sample_rate),
         start(start),
         samples(samples, samples + n),
         session(session) {}
 
-  DecodeTask(DecodeTask &&rhs)
+  WaveTask(WaveTask &&rhs)
       : sample_rate(rhs.sample_rate),
         start(rhs.start),
         samples(std::move(rhs.samples)),
         session(rhs.session) {}
 
-  DecodeTask &operator=(DecodeTask &&rhs) {
+  WaveTask &operator=(WaveTask &&rhs) {
     std::swap(sample_rate, rhs.sample_rate);
     std::swap(start, rhs.start);
     std::swap(samples, rhs.samples);

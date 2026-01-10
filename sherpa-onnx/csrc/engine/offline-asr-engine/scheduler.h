@@ -20,7 +20,7 @@ class Scheduler {
 
   void Start(ErrorCode &code);
 
-  OfflineSession *CreateSession(ErrorCode &code);
+  const OfflineSession *CreateSession(ErrorCode &code);
 
   void CloseSession(int32_t session_id);
 

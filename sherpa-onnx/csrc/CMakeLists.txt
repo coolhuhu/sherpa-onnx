@@ -306,6 +306,7 @@ if(SHERPA_ONNX_ENABLE_ENGINE)
     ./engine/offline-asr-engine/offline-session-impl.cc
     ./engine/offline-asr-engine/online-voice-activity-detector.cc
     ./engine/offline-asr-engine/scheduler.cc
+    ./engine/offline-asr-engine/offline-asr-engine-config.cc 
   )
 endif()
 

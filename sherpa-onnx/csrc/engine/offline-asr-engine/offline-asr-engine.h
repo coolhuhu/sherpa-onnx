@@ -21,7 +21,7 @@ class OfflineASREngine {
 
   void Shutdown();
 
-  OfflineSession *CreateSession(ErrorCode &code);
+  const OfflineSession *CreateSession(ErrorCode &code);
 
  private:
   std::unique_ptr<OfflineASREngineImpl> impl_;
