@@ -20,7 +20,11 @@ class OfflineSessionImpl::Impl {
         worker_(worker),
         vad_detector_(vad_detector),
         owner_(owner),
-        is_decode_finished_(false),
+        last_task_id_(-1),
+        task_id_(1),
+        segment_id_(0),
+        num_finfished_segments_(0),
+        last_segment_id_(-1),
         is_input_finished_(false) {}
 
   void AcceptWaveform(int32_t sample_rate, const float *wave,
@@ -33,7 +37,7 @@ class OfflineSessionImpl::Impl {
       return;
     }
 
-    if (!config_.enable_vad &&
+    if (!config_.use_vad &&
         num_samples + start_ > config_.max_model_input_samples) {
       error_code.error_code = ErrorCode::kInvalidArgument;
       error_code.error_msg =
@@ -41,16 +45,45 @@ class OfflineSessionImpl::Impl {
       return;
     }
 
-    WaveTask task(sample_rate, start_, wave, num_samples, owner_);
-    start_ += num_samples;
-    worker_->CommitWaveTask(std::move(task));
+    if (config_.use_vad) {
+      WaveTask task(task_id_, sample_rate, start_, wave, num_samples, owner_);
+      start_ += num_samples;
+      task_id_++;
+      worker_->CommitWaveTask(std::move(task));
+    } else {
+      buffer_.insert(buffer_.end(), wave, wave + num_samples);
+      start_ += num_samples;
+    }
   }
 
   void Close() { scheduler_->CloseSession(session_id_); }
 
-  void InputFinished() { is_input_finished_ = true; }
+  void InputFinished() {
+    // TODO: 限制该函数只能被调用一次
 
-  bool IsInputFinished() const { return is_input_finished_; }
+    last_task_id_ = task_id_;
+
+    if (config_.use_vad) {
+      WaveTask task;
+      task.task_id = task_id_;
+      task.start = -1;
+      task.sample_rate = config_.sample_rate;
+      task.session = owner_;
+
+      worker_->CommitWaveTask(std::move(task));
+    } else {
+      WaveTask task;
+      task.task_id = task_id_;
+      task.start = start_;
+      task.sample_rate = config_.sample_rate;
+      task.samples = std::move(buffer_);
+      task.session = owner_;
+
+      worker_->CommitWaveTask(std::move(task));
+    }
+  }
+
+  bool IsInputFinished() const { last_task_id_ == task_id_; }
 
   // 获取当前识别结果（聚合所有已完成的片段）
   std::vector<OfflineRecognitionResult> GetResults() {
@@ -71,9 +104,13 @@ class OfflineSessionImpl::Impl {
     results_.push_back(std::move(result));
   }
 
-  bool IsDecodeFinished() const { return is_decode_finished_; }
+  bool IsDecodeFinished() const {
+    return num_finfished_segments_ == last_segment_id_;
+  }
 
-  void DecodeFinished() { is_decode_finished_ = true; }
+  void IncrementFinishedSegment() { ++num_finfished_segments_; }
+
+  void SetLastSegmentId(int32_t id) { last_segment_id_ = id; }
 
   int32_t SessionID() const { return session_id_; }
 
@@ -92,8 +129,14 @@ class OfflineSessionImpl::Impl {
   Worker *worker_;
   OnlineVoiceActivityDetector *vad_detector_;
   OfflineSessionImpl *owner_;
-  std::atomic<bool> is_decode_finished_{false};
+  int32_t last_task_id_;
+  int32_t task_id_;
+  std::atomic<int32_t> segment_id_;
+  std::atomic<int32_t> num_finfished_segments_;
+  std::atomic<int32_t> last_segment_id_;
   std::atomic<bool> is_input_finished_{false};
+
+  std::vector<float> buffer_;
 
   mutable std::mutex mutex_;
   std::vector<OfflineRecognitionResult> results_;
@@ -140,14 +183,20 @@ bool OfflineSessionImpl::IsDecodeFinished() const {
   return impl_->IsDecodeFinished();
 }
 
-void OfflineSessionImpl::DecodeFinished() { impl_->DecodeFinished(); }
-
 int32_t OfflineSessionImpl::SessionID() const { return impl_->SessionID(); }
 
 int32_t OfflineSessionImpl::WorkerID() const { return impl_->WorkerID(); }
 
 const OnlineVoiceActivityDetector *OfflineSessionImpl::VadDetector() const {
   return impl_->VadDetector();
+}
+
+void OfflineSessionImpl::IncrementFinishedSegment() {
+  impl_->IncrementFinishedSegment();
+}
+
+void OfflineSessionImpl::SetLastSegmentId(int32_t id) {
+  impl_->SetLastSegmentId(id);
 }
 
 }  // namespace sherpa_onnx

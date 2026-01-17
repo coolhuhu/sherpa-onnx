@@ -5,15 +5,15 @@
 
 namespace sherpa_onnx {
 
+class OfflineSessionImpl;
+
 class Worker {
  public:
   Worker(int32_t worker_id) : worker_id_(worker_id) {}
 
   virtual ~Worker() = default;
 
-  virtual void AddSession() = 0;
-
-  virtual void RemoveSession() = 0;
+  virtual void AddSession(OfflineSessionImpl *session) = 0;
 
   virtual void CommitWaveTask(WaveTask &&task) = 0;
 

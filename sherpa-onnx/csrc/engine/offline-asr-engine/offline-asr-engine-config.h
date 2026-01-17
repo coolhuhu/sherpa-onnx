@@ -20,7 +20,7 @@ struct OfflineASREngineConfig {
   //   - 不启动IO线程，不进行VAD检测
   //   - 整个音频作为一个片段处理
   //   - 适合短音频或已经预先分割好的音频
-  bool enable_vad = true;  // 是否启用VAD
+  bool use_vad = true;  // 是否启用VAD
 
   int32_t max_accept_waveform_size =
       sample_rate * 300;  // AcceptWaveform单次最大采样点数

@@ -14,18 +14,18 @@ namespace sherpa_onnx {
 
 class CPUWorker : public Worker {
  public:
-  CPUWorker(int32_t worker_id, const OfflineASREngineConfig &config,
-            OfflineRecognizer *recognizer,
-            std::unordered_map<
-                int32_t,
-                std::unique_ptr<moodycamel::BlockingConcurrentQueue<WaveTask>>>
-                &workers_task_queues);
+  CPUWorker(
+      int32_t worker_id, const OfflineASREngineConfig &config,
+      OfflineRecognizer *recognizer,
+      std::unique_ptr<moodycamel::BlockingConcurrentQueue<WaveTask>>
+          &task_queue,
+      std::unordered_map<
+          int32_t, std::unique_ptr<moodycamel::BlockingConcurrentQueue<
+                       std::unique_ptr<OfflineStream>>>> &shared_stream_queues);
 
   ~CPUWorker() override;
 
-  void AddSession() override;
-
-  void RemoveSession() override;
+  void AddSession(OfflineSessionImpl *session) override;
 
   void CommitWaveTask(WaveTask &&task) override;
 

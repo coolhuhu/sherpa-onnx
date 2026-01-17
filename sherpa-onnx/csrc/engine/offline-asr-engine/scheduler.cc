@@ -102,18 +102,22 @@ class Scheduler::Impl {
     recognizers_[0] =
         std::make_unique<OfflineRecognizer>(config_.recognizer_config);
 
-    // Init Task Queue.
+    // Init Task Queue and Segment Queue
     // every worker has its own task queue
     for (int32_t worker_id = 0; worker_id < config_.num_worker_threads;
          ++worker_id) {
       task_queues_[worker_id] = std::make_unique<TaskQueue>();
+      stream_queues_[worker_id] = std::make_unique<StreamQueue>(
+          config_.num_worker_threads * config_.max_sessions_per_worker,
+          config_.num_worker_threads, config_.num_worker_threads);
     }
 
     // Init Workers.
     for (int32_t worker_id = 0; worker_id < config_.num_worker_threads;
          ++worker_id) {
-      workers_[worker_id] = std::make_unique<CPUWorker>(
-          worker_id, config_, recognizers_[0].get(), task_queues_);
+      workers_[worker_id] =
+          std::make_unique<CPUWorker>(worker_id, config_, recognizers_[0].get(),
+                                      task_queues_[worker_id], stream_queues_);
       num_working_sessions_per_worker_[worker_id] = 0;
     }
   }
@@ -123,6 +127,7 @@ class Scheduler::Impl {
   using Ptr = std::unique_ptr<T>;
 
   using TaskQueue = moodycamel::BlockingConcurrentQueue<WaveTask>;
+  using StreamQueue = moodycamel::BlockingConcurrentQueue<SegmentTask>;
   using SessionID = int32_t;
   using WorkerID = int32_t;
 
@@ -134,8 +139,10 @@ class Scheduler::Impl {
 
   std::unordered_map<WorkerID, Ptr<OfflineRecognizer>> recognizers_;
   std::unordered_map<WorkerID, Ptr<Worker>> workers_;
-  std::unordered_map<WorkerID, int32_t> num_working_sessions_per_worker_;
+  std::unordered_map<WorkerID, std::atomic<int32_t>>
+      num_working_sessions_per_worker_;
   std::unordered_map<WorkerID, Ptr<TaskQueue>> task_queues_;
+  std::unordered_map<WorkerID, Ptr<StreamQueue>> stream_queues_;
 
   std::map<SessionID, Ptr<OfflineSessionImpl>> sessions_;
   std::unordered_set<SessionID> idle_session_ids_;

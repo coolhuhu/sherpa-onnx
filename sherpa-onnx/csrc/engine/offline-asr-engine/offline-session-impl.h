@@ -40,14 +40,16 @@ class OfflineSessionImpl : public OfflineSession {
   ///
   bool IsInputFinished() const;
 
-  void DecodeFinished();
-
   void AddResult(const OfflineRecognitionResult &result);
   void AddResult(OfflineRecognitionResult &&result);
 
   int32_t WorkerID() const;
 
   const OnlineVoiceActivityDetector *VadDetector() const;
+
+  void IncrementFinishedSegment();
+
+  void SetLastSegmentId(int32_t id);
 
  private:
   class Impl;
