@@ -160,7 +160,7 @@ void Scheduler::Init(ErrorCode &code) { impl_->Init(code); }
 
 void Scheduler::Start(ErrorCode &code) { impl_->Start(code); }
 
-const OfflineSession *Scheduler::CreateSession(ErrorCode &code) {
+OfflineSession *Scheduler::CreateSession(ErrorCode &code) {
   return impl_->CreateSession(code);
 }
 

@@ -19,7 +19,7 @@ class OfflineASREngineImpl {
 
   void Start(ErrorCode &code) { scheduler_.Start(code); }
 
-  const OfflineSession *CreateSession(ErrorCode &code) {
+  OfflineSession *CreateSession(ErrorCode &code) {
     return scheduler_.CreateSession(code);
   }
 

@@ -25,8 +25,6 @@ class CPUWorker : public Worker {
 
   ~CPUWorker() override;
 
-  void AddSession(OfflineSessionImpl *session) override;
-
   void CommitWaveTask(WaveTask &&task) override;
 
  private:

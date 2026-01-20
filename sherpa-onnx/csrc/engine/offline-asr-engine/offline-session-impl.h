@@ -38,16 +38,20 @@ class OfflineSessionImpl : public OfflineSession {
 
   /// 内部接口
   ///
-  bool IsInputFinished() const;
+  bool IsInputFinished(int32_t task_id) const;
 
   void AddResult(const OfflineRecognitionResult &result);
   void AddResult(OfflineRecognitionResult &&result);
 
   int32_t WorkerID() const;
 
-  const OnlineVoiceActivityDetector *VadDetector() const;
+  OnlineVoiceActivityDetector *VadDetector() const;
 
   void IncrementFinishedSegment();
+
+  void IncrementSegmentId();
+
+  int32_t SegmentID() const;
 
   void SetLastSegmentId(int32_t id);
 

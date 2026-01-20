@@ -21,7 +21,7 @@ class OfflineSessionImpl::Impl {
         vad_detector_(vad_detector),
         owner_(owner),
         last_task_id_(-1),
-        task_id_(1),
+        task_id_(0),
         segment_id_(0),
         num_finfished_segments_(0),
         last_segment_id_(-1),
@@ -46,9 +46,9 @@ class OfflineSessionImpl::Impl {
     }
 
     if (config_.use_vad) {
+      task_id_++;
       WaveTask task(task_id_, sample_rate, start_, wave, num_samples, owner_);
       start_ += num_samples;
-      task_id_++;
       worker_->CommitWaveTask(std::move(task));
     } else {
       buffer_.insert(buffer_.end(), wave, wave + num_samples);
@@ -61,6 +61,7 @@ class OfflineSessionImpl::Impl {
   void InputFinished() {
     // TODO: 限制该函数只能被调用一次
 
+    task_id_++;
     last_task_id_ = task_id_;
 
     if (config_.use_vad) {
@@ -83,7 +84,7 @@ class OfflineSessionImpl::Impl {
     }
   }
 
-  bool IsInputFinished() const { last_task_id_ == task_id_; }
+  bool IsInputFinished(int32_t task_id) const { last_task_id_ == task_id; }
 
   // 获取当前识别结果（聚合所有已完成的片段）
   std::vector<OfflineRecognitionResult> GetResults() {
@@ -110,15 +111,17 @@ class OfflineSessionImpl::Impl {
 
   void IncrementFinishedSegment() { ++num_finfished_segments_; }
 
+  void IncrementSegmentId() { ++segment_id_; }
+
+  int32_t SegmentID() const { return segment_id_; }
+
   void SetLastSegmentId(int32_t id) { last_segment_id_ = id; }
 
   int32_t SessionID() const { return session_id_; }
 
   int32_t WorkerID() const { return worker_->WorkerID(); }
 
-  const OnlineVoiceActivityDetector *VadDetector() const {
-    return vad_detector_;
-  }
+  OnlineVoiceActivityDetector *VadDetector() const { return vad_detector_; }
 
  private:
   const OfflineASREngineConfig &config_;
@@ -161,8 +164,8 @@ void OfflineSessionImpl::Close() { impl_->Close(); }
 
 void OfflineSessionImpl::InputFinished() { impl_->InputFinished(); }
 
-bool OfflineSessionImpl::IsInputFinished() const {
-  return impl_->IsInputFinished();
+bool OfflineSessionImpl::IsInputFinished(int32_t task_id) const {
+  return impl_->IsInputFinished(task_id);
 }
 
 // 获取当前识别结果（聚合所有已完成的片段）
@@ -187,13 +190,17 @@ int32_t OfflineSessionImpl::SessionID() const { return impl_->SessionID(); }
 
 int32_t OfflineSessionImpl::WorkerID() const { return impl_->WorkerID(); }
 
-const OnlineVoiceActivityDetector *OfflineSessionImpl::VadDetector() const {
+OnlineVoiceActivityDetector *OfflineSessionImpl::VadDetector() const {
   return impl_->VadDetector();
 }
 
 void OfflineSessionImpl::IncrementFinishedSegment() {
   impl_->IncrementFinishedSegment();
 }
+
+void OfflineSessionImpl::IncrementSegmentId() { impl_->IncrementSegmentId(); }
+
+int32_t OfflineSessionImpl::SegmentID() const { return impl_->SegmentID(); }
 
 void OfflineSessionImpl::SetLastSegmentId(int32_t id) {
   impl_->SetLastSegmentId(id);

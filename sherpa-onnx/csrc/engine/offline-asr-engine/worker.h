@@ -13,8 +13,6 @@ class Worker {
 
   virtual ~Worker() = default;
 
-  virtual void AddSession(OfflineSessionImpl *session) = 0;
-
   virtual void CommitWaveTask(WaveTask &&task) = 0;
 
   int32_t WorkerID() const { return worker_id_; }
