@@ -83,6 +83,8 @@ struct FeatureExtractorConfig {
 
   bool is_t_one = false;
 
+  bool is_wav2vec = false;
+
   bool round_to_power_of_two = true;
 
   std::string ToString() const;

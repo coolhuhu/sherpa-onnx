@@ -13,6 +13,7 @@
 
 #include "kaldi-native-fbank/csrc/online-feature.h"
 #include "sherpa-onnx/csrc/macros.h"
+#include "sherpa-onnx/csrc/online-wav2vec-audio.h"
 #include "sherpa-onnx/csrc/resample.h"
 
 namespace sherpa_onnx {
@@ -65,6 +66,8 @@ class FeatureExtractor::Impl {
       InitWhisper();
     } else if (config_.is_t_one) {
       InitRawAudioSamples();
+    } else if (config_.is_wav2vec) {
+      InitWav2Vec();
     } else {
       InitFbank();
     }
@@ -144,6 +147,9 @@ class FeatureExtractor::Impl {
     } else if (mfcc_) {
       mfcc_->InputFinished();
       return;
+    } else if (wav2vec_audio_) {
+      wav2vec_audio_->InputFinished();
+      return;
     }
 
     SHERPA_ONNX_LOGE("unreachable code");
@@ -159,6 +165,8 @@ class FeatureExtractor::Impl {
       return raw_audio_->NumFramesReady();
     } else if (mfcc_) {
       return mfcc_->NumFramesReady();
+    } else if (wav2vec_audio_) {
+      return wav2vec_audio_->NumFramesReady();
     }
     SHERPA_ONNX_LOGE("unreachable code");
     SHERPA_ONNX_EXIT(-1);
@@ -175,6 +183,8 @@ class FeatureExtractor::Impl {
       return raw_audio_->IsLastFrame(frame);
     } else if (mfcc_) {
       return mfcc_->IsLastFrame(frame);
+    } else if (wav2vec_audio_) {
+      return wav2vec_audio_->IsLastFrame(frame);
     }
 
     SHERPA_ONNX_LOGE("unreachable code");
@@ -184,6 +194,12 @@ class FeatureExtractor::Impl {
 
   std::vector<float> GetFrames(int32_t frame_index, int32_t n) {
     std::lock_guard<std::mutex> lock(mutex_);
+
+    // Special handling for wav2vec: it returns overlapping audio samples
+    if (wav2vec_audio_) {
+      return wav2vec_audio_->GetFrames(frame_index, n);
+    }
+
     if (frame_index + n > NumFramesReady()) {
       SHERPA_ONNX_LOGE("%d + %d > %d\n", frame_index, n, NumFramesReady());
       SHERPA_ONNX_EXIT(-1);
@@ -221,6 +237,8 @@ class FeatureExtractor::Impl {
       return mfcc_opts_.num_ceps;
     } else if (raw_audio_) {
       return raw_audio_->Dim();
+    } else if (wav2vec_audio_) {
+      return wav2vec_audio_->Dim();
     }
 
     SHERPA_ONNX_LOGE("unreachable code");
@@ -242,6 +260,9 @@ class FeatureExtractor::Impl {
       return;
     } else if (mfcc_) {
       mfcc_->AcceptWaveform(sampling_rate, waveform, n);
+      return;
+    } else if (wav2vec_audio_) {
+      wav2vec_audio_->AcceptWaveform(sampling_rate, waveform, n);
       return;
     }
 
@@ -350,11 +371,23 @@ class FeatureExtractor::Impl {
     raw_audio_ = std::make_unique<knf::OnlineRawAudioSamples>(opts_raw_audio_);
   }
 
+  void InitWav2Vec() {
+    OnlineWav2VecAudioConfig wav2vec_config;
+    wav2vec_config.sampling_rate = config_.sampling_rate;
+    // Use default chunk_length_ms=25ms and chunk_shift_ms=20ms
+    // These match the wav2vec CNN frontend configuration
+    wav2vec_config.chunk_length_ms = config_.frame_length_ms;
+    wav2vec_config.chunk_shift_ms = config_.frame_shift_ms;
+
+    wav2vec_audio_ = std::make_unique<OnlineWav2VecAudio>(wav2vec_config);
+  }
+
  private:
   std::unique_ptr<knf::OnlineFbank> fbank_;
   std::unique_ptr<knf::OnlineMfcc> mfcc_;
   std::unique_ptr<knf::OnlineWhisperFbank> whisper_fbank_;
   std::unique_ptr<knf::OnlineRawAudioSamples> raw_audio_;
+  std::unique_ptr<OnlineWav2VecAudio> wav2vec_audio_;
   knf::FbankOptions opts_;
   knf::RawAudioSamplesOptions opts_raw_audio_;
   knf::MfccOptions mfcc_opts_;

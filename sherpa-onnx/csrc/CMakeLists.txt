@@ -18,6 +18,7 @@ set(sources
   context-graph.cc
   endpoint.cc
   features.cc
+  online-wav2vec-audio.cc
   file-utils.cc
   fst-utils.cc
   homophone-replacer.cc
@@ -468,6 +469,7 @@ if(SHERPA_ONNX_ENABLE_BINARY)
   add_executable(sherpa-onnx-online-punctuation sherpa-onnx-online-punctuation.cc)
   add_executable(sherpa-onnx-version sherpa-onnx-version.cc version.cc)
   add_executable(sherpa-onnx-vad sherpa-onnx-vad.cc)
+  add_executable(features-example features-example.cc)
 
   if(SHERPA_ONNX_ENABLE_TTS)
     add_executable(sherpa-onnx-offline-tts sherpa-onnx-offline-tts.cc)
@@ -490,6 +492,7 @@ if(SHERPA_ONNX_ENABLE_BINARY)
     sherpa-onnx-offline-source-separation
     sherpa-onnx-online-punctuation
     sherpa-onnx-vad
+    features-example
   )
   if(SHERPA_ONNX_ENABLE_TTS)
     list(APPEND main_exes
